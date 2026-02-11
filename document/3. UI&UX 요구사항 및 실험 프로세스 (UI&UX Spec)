@@ -1,0 +1,27 @@
+# 📄 문서 3: UI/UX 요구사항 및 실험 프로세스 (UI/UX Spec)
+## 1. 사용자 인터페이스 레이아웃
+Antigravity는 streamlit을 사용하여 다음 구조를 구현한다.
+
+### A. 사이드바 (실험 설정 파라미터)
+  - Model Selector: meta-llama/Meta-Llama-3-8B-Instruct 고정 로드 버튼.
+  - Parameter K (Slider): PCA 주성분 개수 (1~10, 기본값 3).
+  - Coefficient (Slider): 투영 강도 (0.0~2.0, 기본값 1.0).
+  - Layer Selector (Multiselect): 수술을 집도할 레이어 번호 선택 (기본값 14, 16, 18).
+
+### B. 메인 패널 (실험 제어 및 데이터)
+  1. 질문지 입력창: 사용자가 여러 질문을 줄바꿈으로 입력할 수 있는 text_area.
+  2. 실험 실행 버튼: 버튼 클릭 시 설정된 파라미터로 질문지 배열을 순차적으로 생성.
+  3. 데이터 편집 테이블 (st.data_editor):
+    - 컬럼 구성: ID, 세팅 정보(k/coeff/layers), 질문, 응답 결과, 탈옥 성공률(0~10), 데이터 무결성(0~10), 비고.
+    - 기능: '응답 결과'까지는 시스템이 자동 채움. 이후 컬럼은 사용자가 직접 웹에서 입력.
+
+## 2. 실험 워크플로우 (Antigravity 구현 절차)
+  1. 환경 세팅: TransformerLens를 이용해 Llama-3 모델을 1회 캐싱 로드한다.
+  2. 파라미터 수신: UI에서 슬라이더 값을 읽어와 run_jailbreak_surgery 함수에 전달한다.
+  3. 일괄 생성: 입력된 질문 리스트를 Loop 돌며 결과를 생성하고 Pandas DataFrame에 누적한다.
+  4. 편집 및 저장: 사용자가 점수를 기입하면 이를 반영하여 서버 로컬에 experiment_log.csv로 저장한다.
+---
+## ⚠️ Antigravity를 위한 특별 지시사항
+  - VRAM 관리: 각 질문 생성 후 torch.cuda.empty_cache()를 호출하여 OCI A1 환경에서 OOM(Out of Memory)이 발생하지 않도록 할 것.
+  - 수치 정밀도: PCA 연산 및 Projection 시 반드시 float32로 업캐스팅하여 계산한 뒤 다시 float16으로 복구할 것.
+  - 데이터 보존: 세션이 새로고침되어도 기존에 입력한 점수 데이터가 날아가지 않도록 세션 상태(st.session_state)를 철저히 관리할 것.
