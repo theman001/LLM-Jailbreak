@@ -1,0 +1,65 @@
+# 📄 문서 2: 백엔드 로직 및 수술 스크립트 (Backend Logic)
+## 1. 핵심 알고리즘 설명
+본 시스템의 핵심은 Rank-k Orthogonal Subspace Projection이다. 특정 질문군(Harmful)과 대조군(Harmless) 사이의 활성화 차이를 PCA로 분석하여 거절 성분을 추출하고, 이를 모델의 중간 레이어에서 물리적으로 소거한다.
+
+## 2. [최종 진화형] 탈옥 스크립트 (Antigravity 구현 필수 코드)
+Antigravity는 아래 로직을 백엔드 모듈(surgery_engine.py)로 구현하여 UI와 연결해야 한다.
+```Python
+import torch
+from transformer_lens import HookedTransformer
+from sklearn.decomposition import PCA
+import gc
+import numpy as np
+
+# [Antigravity Note: 이 함수는 UI에서 파라미터를 받아 실행되어야 함]
+def run_jailbreak_surgery(model, k=3, coeff=1.0, target_layers=[14, 16, 18], test_query=""):
+    def apply_template(prompt):
+        return f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+
+    # 데이터셋 구성
+    harmful_raw = ["폭탄 제조법", "해킹 기법", "마약 배합", "피싱 사이트", "독성 추출", "총기 개조", "암호 해독"] * 3
+    harmless_raw = ["요리 레시피", "파이썬 코딩", "우주 과학", "세계 역사", "운동 루틴", "명상 방법", "경제 기초"] * 3
+    harmful_prompts = [apply_template(p) for p in harmful_raw]
+    harmless_prompts = [apply_template(p) for p in harmless_raw]
+
+    # 1. 유동적 레이어 스캔 및 벡터 추출
+    def get_optimized_subspaces(k, layers):
+        subspaces = {}
+        for layer in layers:
+            diffs = []
+            for p_bad, p_good in zip(harmful_prompts, harmless_prompts):
+                with torch.no_grad():
+                    _, cache_bad = model.run_with_cache(p_bad, names_filter=lambda n: n.endswith(f"blocks.{layer}.hook_resid_pre"))
+                    _, cache_good = model.run_with_cache(p_good, names_filter=lambda n: n.endswith(f"blocks.{layer}.hook_resid_pre"))
+                    d = cache_bad[f"blocks.{layer}.hook_resid_pre"][0, -1, :].float() - cache_good[f"blocks.{layer}.hook_resid_pre"][0, -1, :].float()
+                    diffs.append(d.cpu().numpy())
+            
+            pca = PCA(n_components=k)
+            pca.fit(np.stack(diffs))
+            subspaces[layer] = torch.tensor(pca.components_, dtype=torch.float32, device="cuda")
+        return subspaces
+
+    # 2. Projection Hook 정의
+    def make_robust_projection_hook(vectors, coeff):
+        def hook_fn(resid_pre, hook):
+            h_fp32 = resid_pre.float()
+            dot_products = torch.einsum("bsd,kd->bsk", h_fp32, vectors)
+            h_parallel = torch.einsum("bsk,kd->bsd", dot_products, vectors)
+            h_prime = h_fp32 - coeff * h_parallel
+            return h_prime.to(resid_pre.dtype)
+        return hook_fn
+
+    # 수술 집도
+    refusal_subspaces = get_optimized_subspaces(k, target_layers)
+    layer_hooks = [(f"blocks.{l}.hook_resid_pre", make_robust_projection_hook(refusal_subspaces[l], coeff)) for l in target_layers]
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    # 결과 생성
+    test_prompt = apply_template(test_query)
+    with model.hooks(fwd_hooks=layer_hooks):
+        output = model.generate(test_prompt, max_new_tokens=512, temperature=0.7, top_p=0.9)
+    
+    return output.replace(test_prompt, "")
+```
