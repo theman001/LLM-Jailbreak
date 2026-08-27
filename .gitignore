@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# 모델 캐시 / 가중치
+.cache/
+models/
+*.safetensors
+*.bin
+
+# 연구 산출물 (로컬 보관)
+data/
+*.csv
+experiment_log.csv
+experiment_results.csv
+
+# Streamlit
+.streamlit/secrets.toml
+
+# 로컬 설정
+.claude/settings.local.json

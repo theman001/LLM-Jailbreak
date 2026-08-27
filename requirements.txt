@@ -1,0 +1,7 @@
+# torch는 명시하지 않음 — Colab 런타임 내장 버전을 사용한다.
+# transformer-lens ↔ Colab torch 버전이 어긋나면 사용자에게 보고 (calibration point).
+transformer-lens
+streamlit
+scikit-learn
+numpy
+pandas
